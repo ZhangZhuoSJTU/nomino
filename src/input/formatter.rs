@@ -3,17 +3,25 @@ use crate::errors::FormatError;
 
 #[derive(Debug, PartialEq)]
 enum Segment {
+    /// A placeholder such as `{}`, `{1}` or `{name}` with an optional width.
     PlaceHolder {
         padding: Option<usize>,
         capture: Capture,
     },
+    /// Literal text copied to the output unchanged.
     String(String),
 }
 
+/// A parsed format string: an ordered list of literal and placeholder
+/// segments ready to be rendered against a [`Provider`].
 #[derive(Debug, PartialEq)]
 pub struct Formatter(Vec<Segment>);
 
 impl Formatter {
+    /// Parse `format` into a sequence of segments.
+    ///
+    /// Returns an error when the input contains an invalid escape sequence, an
+    /// unopened or unclosed placeholder, or a malformed padding width.
     pub fn new(format: &str) -> Result<Self, FormatError> {
         let mut segments = Vec::new();
         let mut should_escape = false;
@@ -95,31 +103,46 @@ impl Formatter {
         Ok(Self(segments))
     }
 
+    /// Render this format using `provider` to resolve its placeholders.
+    ///
+    /// Unresolvable placeholders are omitted. A resolved value that parses as
+    /// an unsigned integer is zero-padded when its placeholder declared a
+    /// width; every other value is emitted verbatim.
     pub fn format(&self, provider: impl Provider) -> String {
         let mut formatted = String::new();
         for segment in self.0.as_slice() {
             match segment {
                 Segment::PlaceHolder { padding, capture } => {
-                    let Some(var) = provider.provide(capture) else {
-                        continue;
-                    };
-                    if let Some((padding, digits)) =
-                        padding.zip(var.parse().map(|n: usize| n.to_string()).ok())
-                    {
-                        if digits.len() < padding {
-                            let diff = padding - digits.len();
-                            (0..diff).for_each(|_| formatted.push('0'));
-                        }
-                        formatted.push_str(digits.as_str());
-                        continue;
+                    if let Some(value) = provider.provide(capture) {
+                        formatted.push_str(&render(value, *padding));
                     }
-                    formatted.push_str(var);
                 }
                 Segment::String(string) => formatted.push_str(string),
             }
         }
         formatted
     }
+}
+
+/// Render a resolved placeholder value, honouring an optional zero-padding
+/// width.
+fn render(value: &str, padding: Option<usize>) -> String {
+    match padding.zip(value.parse::<usize>().ok()) {
+        Some((width, number)) => zero_pad(&number.to_string(), width),
+        None => value.to_string(),
+    }
+}
+
+/// Left-pad `digits` with zeroes until it is `width` characters wide.
+///
+/// Values that are already at least `width` characters long are unchanged.
+fn zero_pad(digits: &str, width: usize) -> String {
+    let mut padded = String::new();
+    for _ in digits.len()..width {
+        padded.push('0');
+    }
+    padded.push_str(digits);
+    padded
 }
 
 #[cfg(test)]

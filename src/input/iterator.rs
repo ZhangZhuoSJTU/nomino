@@ -9,6 +9,7 @@ use std::vec::IntoIter;
 use walkdir::IntoIter as WalkIter;
 use walkdir::WalkDir;
 
+/// Iterates over the files to be renamed, yielding `(input, output)` pairs.
 #[allow(clippy::large_enum_variant)]
 pub enum InputIterator {
     VectorIterator(IntoIter<(String, String)>),
@@ -21,6 +22,7 @@ pub enum InputIterator {
 }
 
 impl InputIterator {
+    /// Build an iterator for `source`.
     pub fn new(
         source: Source,
         formatter: Option<Formatter>,
@@ -78,6 +80,7 @@ impl InputIterator {
 impl Iterator for InputIterator {
     type Item = (String, String);
 
+    /// Yield the next `(input, output)` pair, if any.
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::VectorIterator(iter) => iter.next(),
